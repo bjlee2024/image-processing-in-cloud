@@ -10,11 +10,16 @@ variable "profile" {
 
 # pointcloud processing requires some pre-installed packages like meditlink, autotest, etc.
 # this pre-installed package is big size(over 6GB) and takes a long time to install.
-# so, we use custom AMI for this project.
+# so, we use custom AMI and snapshot for this project.
 variable "custom_ami_id" {
   description = "The name of the custom AMI to use"
   type        = string
   default     = "ami-0b974a2f26d4dad47"
+}
+variable "custome_snap_id" {
+  description = "The name of the custom snapshot to use"
+  type        = string
+  default     = "snap-0ede3736964b134b9"
 }
 
 # This is already created in dev env, use the existing key pair
