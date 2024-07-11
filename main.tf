@@ -74,10 +74,10 @@ resource "aws_s3_bucket" "image_processing_bucket" {
 
 # Upload api.py to S3
 resource "aws_s3_object" "api_py" {
-    depends_on = [ aws_s3_bucket.image_processing_bucket ]
-  bucket = var.s3_bucket_name
-  key    = var.s3_key
-  source = "./ec2/api.py"
+  depends_on = [aws_s3_bucket.image_processing_bucket]
+  bucket     = var.s3_bucket_name
+  key        = var.s3_key
+  source     = "./ec2/api.py"
 }
 
 # Launch template
