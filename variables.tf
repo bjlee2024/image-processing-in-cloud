@@ -14,13 +14,14 @@ variable "profile" {
 variable "custom_ami_id" {
   description = "The name of the custom AMI to use"
   type        = string
-  default     = "ami-0b974a2f26d4dad47"
+  default     = "ami-07fa1feb7764d7ae2"
 }
-variable "custome_snap_id" {
-  description = "The name of the custom snapshot to use"
-  type        = string
-  default     = "snap-0ede3736964b134b9"
-}
+
+# variable "custome_snap_id" {
+#   description = "The name of the custom snapshot to use"
+#   type        = string
+#   default     = "snap-0ede3736964b134b9"
+# }
 
 # This is already created in dev env, use the existing key pair
 # if you need private key, you can contact the devops team or byeongjin.lee@medit.com
@@ -92,5 +93,17 @@ variable "ingress_cidr_blocks" {
 # I don't know what is proper value for this variable, need to estimate
 variable "processing_time_threshold" {
   description = "The threshold for processing time to trigger scaling (in seconds)"
-  default     = 3000
+  default     = 360
+}
+
+# Not used, check api.py for the actual value
+variable "pointcloud_api_logs_group" {
+  description = "The CloudWatch log group for the API server"
+  default     = "pointcloud-api-logs-group"
+}
+
+# Not used, check api.py for the actual value
+variable "pointcloud_api_log_stream" {
+  description = "The CloudWatch log stream for the API server"
+  default     = "pointcloud-api-log-stream"
 }

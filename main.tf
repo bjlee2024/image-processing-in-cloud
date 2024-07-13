@@ -88,7 +88,7 @@ resource "aws_s3_object" "api_py" {
 
 # Launch template
 resource "aws_launch_template" "pointcloud_api_server" {
-  name                   = "api_server_template"
+  name                   = "pointcloud_api_server_template"
   image_id               = var.custom_ami_id
   instance_type          = var.instance_type
   key_name               = var.ec2_key_name
@@ -111,109 +111,18 @@ resource "aws_launch_template" "pointcloud_api_server" {
               <powershell>
               Start-Transcript -Path C:\userdata_execution.log
 
-              // 인스턴스 실행시 아래 파일을 설치하는데 너무 오래걸림, 실행시 설치는 불가능한 시니라오라 아래 코드는 주석처리함
               try {
-                  # # Function to check if a command exists
-                  # function Test-Command($cmdname) {
-                  #     return [bool](Get-Command -Name $cmdname -ErrorAction SilentlyContinue)
-                  # }
-
-                  # # Check if Python is installed
-                  # if (-not (Test-Command python)) {
-                  #     Write-Host "Python is not installed. Installing Python..."
-                      
-                  #     # Download Python installer
-                  #     $pythonUrl = "https://www.python.org/ftp/python/3.9.7/python-3.9.7-amd64.exe"
-                  #     $installerPath = "$env:TEMP\python-installer.exe"
-                  #     Invoke-WebRequest -Uri $pythonUrl -OutFile $installerPath
-
-                  #     # Install Python silently
-                  #     Start-Process -FilePath $installerPath -ArgumentList "/quiet", "InstallAllUsers=1", "PrependPath=1" -Wait
-                      
-                  #     # Remove the installer
-                  #     Remove-Item -Path $installerPath -Force
-
-                  #     # Refresh environment variables
-                  #     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-
-                  #     Write-Host "Python has been installed."
-                  # } else {
-                  #     Write-Host "Python is already installed."
-                  # }
-
-                  # # Install AWS Tools for PowerShell if not already installed
-                  # if (-not (Get-Module -ListAvailable -Name AWSPowerShell)) {
-                  #     Install-Module -Name AWSPowerShell -Force -AllowClobber
-                  # }
-
-                  # Import-Module AWSPowerShell
-                  
-                  # # CloudWatch Agent 
-                  # # $cloudWatchAgentUrl = "https://s3.amazonaws.com/amazoncloudwatch-agent/windows/amd64/latest/amazon-cloudwatch-agent.msi"
-                  # $cloudWatchAgentUrl = "https://amazoncloudwatch-agent.s3.amazonaws.com/windows/amd64/latest/amazon-cloudwatch-agent.msi"
-                  # $installerPath = "$env:TEMP\amazon-cloudwatch-agent.msi"
-
-                  # Write-Host "Downloading CloudWatch Agent..."
-                  # Invoke-WebRequest -Uri $cloudWatchAgentUrl -OutFile $installerPath
-
-                  # Write-Host "Installing CloudWatch Agent..."
-                  # Start-Process msiexec.exe -ArgumentList "/i $installerPath /qn" -Wait
-
-                  # # Check Installation
-                  # $cloudWatchAgentPath = "C:\Program Files\Amazon\AmazonCloudWatchAgent\amazon-cloudwatch-agent.exe"
-                  # if (Test-Path $cloudWatchAgentPath) {
-                  #     Write-Host "CloudWatch Agent 설치 완료"
-                  # } else {
-                  #     Write-Error "CloudWatch Agent 설치 실패"
-                  #     Exit 1
-                  # }
-
-                  # # Configure CloudWatch agent
-                  # $config = @{
-                  #     logs = @{
-                  #         logs_collected = @{
-                  #             files = @{
-                  #                 collect_list = @(
-                  #                     @{
-                  #                         file_path = "C:\MeditAutoTest\logs\*.log"
-                  #                         log_group_name = "/ec2/pointcloud/api-server-logs"
-                  #                         log_stream_name = "{instance_id}"
-                  #                         timezone = "UTC"
-                  #                     }
-                  #                     @{
-                  #                         file_path = "C:\userdata_execution.log"
-                  #                         log_group_name = "/ec2/pointcloud/userdata"
-                  #                         log_stream_name = "{instance_id}"
-                  #                         timezone = "UTC"
-                  #                     }
-                  #                 )
-                  #             }
-                  #         }
-                  #     }
-                  # }
-                  # $config | ConvertTo-Json -Depth 4 | Out-File -Encoding utf8 -FilePath "C:\cloudwatch-config.json"
-
-                  # # Start CloudWatch agent
-                  # 아래 명령어는 실행시 오류가 발생함, 문서상이나 검색시 해결 방안 존재 안함, 원인 파악 불가
-                  # 인스턴스 실행 로그는 api.py 에서 C:\userdata_execution.log 를 참조하도록 함
-                  # & "C:\Program Files\Amazon\AmazonCloudWatchAgent\amazon-cloudwatch-agent-ctl.ps1" -a fetch-config -m ec2 -c file:"C:\cloudwatch-config.json" -s
 
                   # Download api.py from S3
                   $s3bucket = "${var.s3_bucket_name}"
                   $s3key = "${var.s3_key}"
                   Read-S3Object -BucketName $s3bucket -Key $s3key -File C:\MeditAutoTest\api.py
 
-                  # # Create a scheduled task to start the API server on system startup
-                  # $action = New-ScheduledTaskAction -Execute "python" -Argument "C:\MeditAutoTest\api.py"
-                  # $trigger = New-ScheduledTaskTrigger -AtStartup
-                  # $principal = New-ScheduledTaskPrincipal -UserID "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-                  # Register-ScheduledTask -TaskName "StartAPIServer" -Action $action -Trigger $trigger -Principal $principal -Description "Start API server on system startup"
+                  # Allow Port 5000 from Windows Firewall
+                  New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow 
 
-                  # # Start the API server immediately
-                  # Start-ScheduledTask -TaskName "StartAPIServer"
-                  
                   # Simple Start the API server
-                  Start-Process python -ArgumentList "C:\MeditAutoTest\api.py"
+                  Start-Process python -ArgumentList "C:\MeditAutoTest\api.py" -WorkingDirectory "C:\MeditAutoTest\9999.0.0.4514_Release"
 
                   Write-Host "User data script execution completed successfully."
               }
@@ -225,6 +134,7 @@ resource "aws_launch_template" "pointcloud_api_server" {
                   Stop-Transcript
               }
               </powershell>
+              <persist>true</persist>
               EOF
   )
 }
@@ -313,9 +223,6 @@ resource "aws_cloudwatch_metric_alarm" "high_processing_time" {
   evaluation_periods  = "2"
   metric_name         = "ProcessingDuration"
   namespace           = "CustomMetrics"
-  dimensions = {
-    InstanceId = aws_autoscaling_group.pointcloud_api_server_asg.name
-  }
   period              = "60"
   statistic           = "Average"
   threshold           = var.processing_time_threshold

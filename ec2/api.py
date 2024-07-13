@@ -1,3 +1,17 @@
+# Description: This script is used to create a Flask API for pointcloud image processing tasks.
+# The API has the following endpoints:
+# 1. POST /process: This endpoint is used to start a new image processing task. The request body should contain a JSON object with the following keys
+#    - "Source Folder Path": S3 URI of the source folder containing the images to be processed
+#    - "Target Folder Path": S3 URI of the target folder where the processed images will be saved
+#    - Other configuration parameters required for the image processing task
+#    The endpoint returns a JSON response with the job ID and status "started"
+# 2. GET /job/<job_id>: This endpoint is used to get the status of a specific job identified by the job ID
+#    The endpoint returns a JSON response with the job ID and its status
+# 3. GET /jobs: This endpoint is used to get the status of all active jobs
+#    The endpoint returns a JSON response with a list of job IDs and their statuses
+# 4. GET /status/health: This endpoint is used for AWS EC2 Health Check
+#    The endpoint returns a JSON response with the status "ready"
+
 from flask import Flask, request, jsonify
 import json
 import boto3
@@ -26,6 +40,17 @@ def get_instance_region():
         logger.error("Failed to retrieve instance region from metadata")
         return None
 
+def get_instance_id():
+    try:
+        with urllib.request.urlopen("http://169.254.169.254/latest/meta-data/instance-id", timeout=1) as response:
+            return response.read().decode('utf-8')
+    except urllib.error.URLError:
+        logger.error("Failed to retrieve instance id from metadata")
+        return None
+
+region = get_instance_region()
+instance_id = get_instance_id()
+
 # Get temporary credentials from EC2 instance metadata
 def get_instance_credentials():
     try:
@@ -41,7 +66,6 @@ def get_instance_credentials():
 
 # Create boto3 session using region information and temporary credentials
 def create_boto3_session():
-    region = get_instance_region()
     credentials = get_instance_credentials()
     
     if region and credentials:
@@ -61,16 +85,18 @@ session = create_boto3_session()
 
 if session:
     s3 = session.client("s3")
+    cloudwatch = session.client('cloudwatch')
     cloudwatch_logs = session.client('logs')
 else:
     logger.error("Failed to initialize AWS clients")
     s3 = None
+    cloudwatch = None
     cloudwatch_logs = None
 
 
 # Configuration for CloudWatch Client
-log_group_name = '/medit-auto-test/api-logs'
-log_stream_name = f'api-log-stream-{int(time.time())}'
+log_group_name = '/pointcloud-auto-test/api-logs'
+log_stream_name = f'api-log-stream-{instance_id}-{int(time.time())}'
 
 try:
     cloudwatch_logs.create_log_group(logGroupName=log_group_name)
@@ -144,7 +170,7 @@ def download_from_s3(s3_uri, local_path):
         
         logger.info(f"Attempting to download from bucket: {bucket_name}, prefix: {prefix}")
         
-        # 버킷 내 객체 리스트 확인 및 다운로드
+        # Check Objects in the bucket and download
         paginator = s3.get_paginator('list_objects_v2')
         count = 0
         for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
@@ -152,17 +178,17 @@ def download_from_s3(s3_uri, local_path):
                 for obj in page['Contents']:
                     count += 1
                     file_key = obj['Key']
-                    if file_key.endswith('/'):  # S3 콘솔에서 생성된 '폴더'는 끝에 /가 있는 객체입니다
+                    if file_key.endswith('/'):  # Folders in S3 are objects that end with / 
                         continue
                     
-                    # 로컬 파일 경로 생성
+                    # Create local file path
                     relative_path = os.path.relpath(file_key, prefix)
                     local_file_path = os.path.join(local_path, relative_path)
                     
-                    # 필요한 디렉토리 생성
+                    # Create local directories if they don't exist
                     os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
                     
-                    # 파일 다운로드
+                    # Download the file
                     logger.info(f"Downloading {file_key} to {local_file_path}")
                     s3.download_file(bucket_name, file_key, local_file_path)
 
@@ -211,6 +237,7 @@ def upload_to_s3(local_path, s3_uri):
 
 def process_images(job_id, config):
     try:
+        logger.info(f"Current working directory: {os.getcwd()}")
         logger.info(f"Starting image processing task for job {job_id}")
         job_status[job_id] = "processing"
         job_start_times[job_id] = time.time()
@@ -225,22 +252,21 @@ def process_images(job_id, config):
         config["Source Folder Path"] = local_source_path
         config["Target Folder Path"] = local_target_path
 
+        logger.info(f"config.json : {config}")
+
         config_path = os.path.join(local_source_path, "config.json")
         with open(config_path, "w") as f:
             json.dump(config, f)
 
         start_time = time.time()
 
-        logger.info(f"Current working directory: {os.getcwd()}")
-
-        args = r'--iScanComplete \"{config_path}\"'
-        logger.info(f"Attempting to run command with args: {args}")
+        logger.info(f"Attempting to run command with config: {config_path}")
         
         process = subprocess.Popen(
             ["Medit_AutoTest.exe", "--iScanComplete", config_path], 
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd="C:\\MeditAutoTest",
+            cwd="C:\\MeditAutoTest\\9999.0.0.4514_Release",
             )
 
         for line in process.stdout:
@@ -255,9 +281,9 @@ def process_images(job_id, config):
 
         duration = end_time - start_time
         logger.info(f"Image processing completed in {duration:.2f} seconds for job {job_id}")
-        
-        if cloudwatch_logs:
-            cloudwatch_logs.put_metric_data(
+
+        if cloudwatch:
+            cloudwatch.put_metric_data(
                 Namespace='CustomMetrics',
                 MetricData=[
                     {
@@ -267,7 +293,11 @@ def process_images(job_id, config):
                         'Dimensions': [
                             {
                                 'Name': 'InstanceId',
-                                'Value': os.getenv('INSTANCE_ID', 'unknown')
+                                'Value': instance_id 
+                            },
+                            {
+                                'Name': 'JobId',
+                                'Value': job_id
                             }
                         ]
                         
@@ -282,6 +312,7 @@ def process_images(job_id, config):
         logger.error(f"Error processing job {job_id}: {str(e)}")
         job_status[job_id] = "failed"
     finally:
+        job_status.pop(job_id, None)
         job_start_times.pop(job_id, None)
         try:
             shutil.rmtree(local_source_path)
