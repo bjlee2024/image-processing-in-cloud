@@ -1,18 +1,14 @@
-prototype architecture
+![alt text](image.png)
 
+1. User 는 S3 에 src 이미지를 업로드
+2. User 는 아래와 같은 형식으로 API 서버 호출
 
-
-work flow
-
-User uploads source files(over 500MB) to be processed to src folder of S3 bucket
-
-User calls rest api to start processing with some information like the below
-
+```json
 {
-// S3 URI for the uploaded source folder
+// 업로드한 소스가 있는 폴더의 S3 URI
   "Source Folder Path": "s3://pointcloud.test.until.20240607/test/src",
-// S3 URI for output of processing
-  "Target Folder Path": "s3://pointcloud.test.until.20240607/test/target",  
+// 처리결과가 저장되는 폴더의 S3 URI
+  "Target Folder Path": "s3://pointcloud.test.until.20240607/test/target",
   "Force Global Align": true,
   "Save Source To Result Folder": true,
   "Complete Type": 1,
@@ -25,36 +21,17 @@ User calls rest api to start processing with some information like the below
   "High Resolution Merge Type": 1,
   "Apply High Resolution to Prep": true
 }
+```
 
-First Lambda receives user request and validates it ( if S3 URI is valid or not..) and adds it to SQS
-
-Second Lambda receives SQS event and process task like the followings
-
-Send command to EC2 instance thru AWS SSM
-
-this command will run python script on EC2 with request body
-
-In “process_image.py” on EC2 instance, 
-
-replace two field of the above request body with local path like the below.
-
-save the updated json as named “config.json” in local src folder
-
-run command to process 3d image
-
-our AMI has environments to run the following command
-
-"C:\\MeditAutoTest\\9999.0.0.4515_Release\\Medit_AutoTest.exe --iScanComplete 'C:\\MetditAutoTest\\src\\config.json'"
-
-send stdout, stderr and process time should be sent to cloudwatch
-
+3. API 서버는 요청을 아래와 같이 Custom AMI 환경에 맞게 변환 후 S3 로 부터 소스 다운로드 및 이미지 프로세싱 처리
+```json
 {
-// Replaced with local path based on EC2 Instance Env
-  "Source Folder Path": "C:\\MetditAutoTest\src",
-// Replaced with local path based on EC2 Instance Env
-  "Target Folder Path": "C:\\MeditAutoTest\target",
+// EC2 Instance 환경의 소스 경로
+  "Source Folder Path": "C:\\Metdit_AutoTest\src",
+// EC2 Instance 환경의 결과 파일이 저장되는 경로
+  "Target Folder Path": "C:\\Medit_AutoTest\target",
 
-// the followings is same with original req
+// 아래 나머지 설정은 요청바디로 동일
   "Force Global Align": true,
   "Save Source To Result Folder": true,
   "Complete Type": 1,
@@ -66,7 +43,11 @@ send stdout, stderr and process time should be sent to cloudwatch
   "Reduce Roughness": 0,
   "High Resolution Merge Type": 1,
   "Apply High Resolution to Prep": true
-}  
+}
+```
+4. EC2 로컬에 저장된 결과를 요청된 결과 S3 위치로 업로드
 
-
+---
+검토 결과
+1. TBD
 
