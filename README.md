@@ -1,3 +1,6 @@
+
+## System Design
+
 ![alt text](image.png)
 
 1. User 는 S3 에 src 이미지를 업로드
@@ -48,6 +51,8 @@
 4. EC2 로컬에 저장된 결과를 요청된 결과 S3 위치로 업로드
 
 ---
+## API spec
+
 Description: This script is used to create a Flask API for pointcloud image processing tasks.
 The API has the following endpoints:
 1. POST /process: This endpoint is used to start a new image processing task. The request body should contain a JSON object with the following keys
@@ -62,6 +67,37 @@ The API has the following endpoints:
 4. GET /status/health: This endpoint is used for AWS EC2 Health Check
    The endpoint returns a JSON response with the status "ready"
 ---
-검토 결과
-1. TBD
+## TBD
+
+- [ ] 커스텀 AMI 개선
+: 현재 4G 가 넘는 파일을 기 설치하여 대응하나 Study 를 위해 Medit_AutoTest 를 동적으로 EC2 에 deploy 하는 방식으로...
+
+- [ ] 빠르게 진행하기 위해 python 으로 했으나 golang 같은 컴파일 언어로 변경 필요
+
+- [ ] 같은 인스턴스에 같은 소스를 프로세싱하더라도 측정된 processing duration 의 범위가 신뢰되지 않음 (290 ~ 900)
+: Windows 에서 가끔 python 서버를 띄우지 못하는 경우가 왕왕 발생 -.-
+: 일관된 성능도 나오지 않음
+: 가끔 Medit_AutoTest.exe 에서 멈추는 경우 발생
+: 동시 작업 수에 따른 성능도 측정 필요 -> Autoscaling metric 으로 사용
+: 프로세싱이 어느단계인지, 몇 % 진행되었는지 확인 필요
+
+- [ ] AWS Autoscaling Group뿐 아니라 Target Group 의 트래픽 조절을
+커스텀해야 함
+: API server 에서 현재 부하 상태를 리턴해주는 Endpoint 노출
+: Target Group 에서 ALB 로 부하를 해당 정보를 통해 트래픽 라우팅
+
+- [ ] 성능 분석을 통해 CloudWatch 를 통해 보여주는 로깅 고도화 필요
+: 외부에서 디버깅 레벨 조절 가능
+
+
+- [ ] PoC 개선중 아이템
+	- [ ] Traffic Routing
+		- [ ] Lambda vs Target Group
+	- [ ] Job Queue
+	- [ ] 성능분석
+		- [ ] Job 세부 성능 확인
+			- [ ] Job state 별 로깅?
+		- [ ] CloudWatch 로그 분리
+			- [ ] 
+
 
