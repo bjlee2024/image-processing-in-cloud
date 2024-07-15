@@ -50,6 +50,9 @@
 ```
 4. EC2 로컬에 저장된 결과를 요청된 결과 S3 위치로 업로드
 
+Processing 중 api server 와 Medit_AutoTest.exe 의 로그는 cloud watch 로 실시간 업로드(해당 로그그룹은 variables.tf 에서 확인 및 변경 가능)
+Processing 에 걸린 시간은 cloud watch metric 에 Instance Id / Job Id 디멘션으로 저장
+
 ---
 ## API spec
 
