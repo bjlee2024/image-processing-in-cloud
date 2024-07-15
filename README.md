@@ -48,6 +48,20 @@
 4. EC2 로컬에 저장된 결과를 요청된 결과 S3 위치로 업로드
 
 ---
+Description: This script is used to create a Flask API for pointcloud image processing tasks.
+The API has the following endpoints:
+1. POST /process: This endpoint is used to start a new image processing task. The request body should contain a JSON object with the following keys
+   - "Source Folder Path": S3 URI of the source folder containing the images to be processed
+   - "Target Folder Path": S3 URI of the target folder where the processed images will be saved
+   - Other configuration parameters required for the image processing task
+   The endpoint returns a JSON response with the job ID and status "started"
+2. GET /job/<job_id>: This endpoint is used to get the status of a specific job identified by the job ID
+   The endpoint returns a JSON response with the job ID and its status
+3. GET /jobs: This endpoint is used to get the status of all active jobs
+   The endpoint returns a JSON response with a list of job IDs and their statuses
+4. GET /status/health: This endpoint is used for AWS EC2 Health Check
+   The endpoint returns a JSON response with the status "ready"
+---
 검토 결과
 1. TBD
 
