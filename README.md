@@ -1,17 +1,19 @@
 
-## System Design
+## PoC project
 
 ![alt text](image.png)
 
-1. User 는 S3 에 src 이미지를 업로드
-2. User 는 아래와 같은 형식으로 API 서버 호출
+1. User uploads source files(point cloud images) to S3
+2. User sends a request with the following content
 
 ```json
 {
-// 업로드한 소스가 있는 폴더의 S3 URI
+// S3 URI where user uploaded src to
   "Source Folder Path": "s3://pointcloud.test.until.20240607/test/src",
-// 처리결과가 저장되는 폴더의 S3 URI
+// S3 URI where output should be saved to
   "Target Folder Path": "s3://pointcloud.test.until.20240607/test/target",
+
+// the followings should be passed to image processor(Medit_AutoTest.exe)
   "Force Global Align": true,
   "Save Source To Result Folder": true,
   "Complete Type": 1,
@@ -26,15 +28,15 @@
 }
 ```
 
-3. API 서버는 요청을 아래와 같이 Custom AMI 환경에 맞게 변환 후 S3 로 부터 소스 다운로드 및 이미지 프로세싱 처리
+3. API server downloads source files to local from S3 and processes it using Medit_AutoTest.exe
+
 ```json
 {
-// EC2 Instance 환경의 소스 경로
+// downloaded src's path in EC2 Instance
   "Source Folder Path": "C:\\Metdit_AutoTest\src",
-// EC2 Instance 환경의 결과 파일이 저장되는 경로
+// output path in EC2 Instance
   "Target Folder Path": "C:\\Medit_AutoTest\target",
 
-// 아래 나머지 설정은 요청바디로 동일
   "Force Global Align": true,
   "Save Source To Result Folder": true,
   "Complete Type": 1,
@@ -48,10 +50,7 @@
   "Apply High Resolution to Prep": true
 }
 ```
-4. EC2 로컬에 저장된 결과를 요청된 결과 S3 위치로 업로드
-
-Processing 중 api server 와 Medit_AutoTest.exe 의 로그는 cloud watch 로 실시간 업로드(해당 로그그룹은 variables.tf 에서 확인 및 변경 가능)
-Processing 에 걸린 시간은 cloud watch metric 에 Instance Id / Job Id 디멘션으로 저장
+4. After processing, API server uploads result files to S3 target folder in request body  
 
 ---
 ## API spec
@@ -70,6 +69,13 @@ The API has the following endpoints:
 4. GET /status/health: This endpoint is used for AWS EC2 Health Check
    The endpoint returns a JSON response with the status "ready"
 ---
+## TODO
+Most Image Processing like Medit_AutoTest.exe is high CPU intensive job and it hits almost 100% CPU usage frequently during processing
+we have only image processor based on windows(/w CUDA)
+so we need to find the best option(instance type, autoscaling method, job fetching and so on) under windows-based EC2 env
+
+---
+
 ## TBD
 
 - [ ] 커스텀 AMI 개선
