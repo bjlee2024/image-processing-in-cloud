@@ -12,6 +12,7 @@
 # 4. GET /status/health: This endpoint is used for AWS EC2 Health Check
 #    The endpoint returns a JSON response with the status "ready"
 
+
 from flask import Flask, request, jsonify
 import json
 import boto3
@@ -26,7 +27,6 @@ from botocore.exceptions import ClientError
 import urllib.request
 import shutil
 
-app = Flask(__name__)
 
 # Configuration for logging
 logger = logging.getLogger("ImageProcessing")
@@ -240,13 +240,14 @@ def process_images(job_id, config):
     try:
         logger.info(f"Current working directory: {os.getcwd()}")
         logger.info(f"Starting image processing task for job {job_id}")
-        job_status[job_id] = "processing"
+        job_status[job_id] = "preparing"
         job_start_times[job_id] = time.time()
 
         source_s3_uri = config["Source Folder Path"]
         target_s3_uri = config["Target Folder Path"]
 
         local_source_path = f"C:\\MeditAutoTest\\src_{job_id}"
+        job_status[job_id] = "downloading"
         download_from_s3(source_s3_uri, local_source_path)
 
         local_target_path = f"C:\\MeditAutoTest\\target_{job_id}"
@@ -262,6 +263,7 @@ def process_images(job_id, config):
         start_time = time.time()
 
         logger.info(f"Attempting to run command with config: {config_path}")
+        job_status[job_id] = "processing"
         
         process = subprocess.Popen(
             ["Medit_AutoTest.exe", "--iScanComplete", config_path], 
@@ -277,7 +279,8 @@ def process_images(job_id, config):
 
         process.wait()
         end_time = time.time()
-
+        
+        job_status[job_id] = "uploading"
         upload_to_s3(f"C:\\MeditAutoTest\\target_{job_id}", target_s3_uri)
 
         duration = end_time - start_time
@@ -321,7 +324,9 @@ def process_images(job_id, config):
             logger.info(f"Cleaned up temporary directories for job {job_id}")
         except Exception as e:
             logger.error(f"Error cleaning up temporary directories: {str(e)}")
-        
+
+## Rest endpoints
+app = Flask(__name__)
 
 @app.route('/process', methods=['POST'])
 def start_processing():
@@ -346,11 +351,10 @@ def get_all_job_status():
             "job_id": job_id,
             "status": status,
         }
-        if status == "processing":
-            start_time = job_start_times.get(job_id)
-            if start_time:
-                duration = current_time - start_time
-                job_info["duration"] = f"{duration:.2f} seconds"
+        start_time = job_start_times.get(job_id)
+        if start_time:
+            duration = current_time - start_time
+            job_info["duration"] = f"{duration:.2f} seconds"
         job_list.append(job_info)
     
     return jsonify({"jobs": job_list}), 200

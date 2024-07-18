@@ -14,14 +14,15 @@ variable "profile" {
 variable "custom_ami_id" {
   description = "The name of the custom AMI to use"
   type        = string
-  default     = "ami-07fa1feb7764d7ae2"
+  # default     = "ami-07fa1feb7764d7ae2"
+  default = "ami-09c97a25e705f1d18"
 }
 
-# variable "custome_snap_id" {
-#   description = "The name of the custom snapshot to use"
-#   type        = string
-#   default     = "snap-0ede3736964b134b9"
-# }
+variable "custome_snap_id" {
+  description = "The name of the custom snapshot to use"
+  type        = string
+  default     = "snap-00e925f22e89693e6"
+}
 
 # This is already created in dev env, use the existing key pair
 # if you need private key, you can contact the devops team or byeongjin.lee@medit.com
@@ -39,10 +40,16 @@ variable "s3_bucket_name" {
 }
 
 # S3 key for api server code
-variable "s3_key" {
+variable "s3_api_key" {
   description = "The key of the S3 object for api.py"
   type        = string
   default     = "api.py"
+}
+# S3 key for service script
+variable "s3_script_key" {
+  description = "The key of the S3 object for powershell script"
+  type        = string
+  default     = "service_script.ps1"
 }
 
 # we need GPU instance for pointcloud processing

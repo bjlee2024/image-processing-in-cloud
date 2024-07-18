@@ -58,6 +58,14 @@ resource "aws_security_group" "pointcloud_ec2_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  ingress {
+    from_port   = 3389
+    to_port     = 3389
+    protocol    = "tcp"
+    cidr_blocks = var.ingress_cidr_blocks
+  }
+
   ingress {
     from_port       = 5000
     to_port         = 5000
@@ -82,9 +90,16 @@ resource "aws_s3_bucket" "image_processing_bucket" {
 resource "aws_s3_object" "api_py" {
   depends_on = [aws_s3_bucket.image_processing_bucket]
   bucket     = var.s3_bucket_name
-  key        = var.s3_key
+  key        = var.s3_api_key
   source     = "./ec2/api.py"
 }
+
+# resource "aws_s3_object" "service_script_py" {
+#   depends_on = [aws_s3_bucket.image_processing_bucket]
+#   bucket     = var.s3_bucket_name
+#   key        = var.s3_script_key
+#   source     = "./ec2/service_script.ps1"
+# }
 
 # Launch template
 resource "aws_launch_template" "pointcloud_api_server" {
@@ -92,11 +107,17 @@ resource "aws_launch_template" "pointcloud_api_server" {
   image_id               = var.custom_ami_id
   instance_type          = var.instance_type
   key_name               = var.ec2_key_name
-  vpc_security_group_ids = [aws_security_group.pointcloud_ec2_sg.id]
+  #vpc_security_group_ids = [aws_security_group.pointcloud_ec2_sg.id]
   depends_on             = [aws_s3_object.api_py, aws_iam_instance_profile.pointcloud_ec2_profile]
 
   iam_instance_profile {
     name = aws_iam_instance_profile.pointcloud_ec2_profile.name
+  }
+  
+  # public IP for local testing purposes using RDP
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups = [aws_security_group.pointcloud_ec2_sg.id]
   }
 
   # block_device_mappings {
@@ -112,17 +133,38 @@ resource "aws_launch_template" "pointcloud_api_server" {
               Start-Transcript -Path C:\userdata_execution.log
 
               try {
+                  $workingDir = "C:\MeditAutoTest\9999.0.0.4514_Release"
+                  $serverScript = "C:\MeditAutoTest\api.py"
 
-                  # Download api.py from S3
+                  # Download api.py and service script from S3
                   $s3bucket = "${var.s3_bucket_name}"
-                  $s3key = "${var.s3_key}"
-                  Read-S3Object -BucketName $s3bucket -Key $s3key -File C:\MeditAutoTest\api.py
+                  $s3apikey = "${var.s3_api_key}"
+                  Read-S3Object -BucketName $s3bucket -Key $s3apikey -File $serverScript
 
                   # Allow Port 5000 from Windows Firewall
                   New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow 
 
-                  # Simple Start the API server
-                  Start-Process python -ArgumentList "C:\MeditAutoTest\api.py" -WorkingDirectory "C:\MeditAutoTest\9999.0.0.4514_Release"
+                  # Method to use scheduled task to run the python server
+                  # $action = New-ScheduledTaskAction -Execute "python.exe" -Argument $serverScript -WorkingDirectory $workingDir
+                  # $trigger = New-ScheduledTaskTrigger -AtStartup
+                  # $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+                  # $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable
+                  # Register-ScheduledTask -TaskName "PythonServer" -Action $action -Trigger $trigger -Principal $principal -Settings $settings
+                  # Start-ScheduledTask -TaskName "PythonServer"
+                  
+                  # Method to use Start-Process to run the python server
+                  $server = Start-Process -FilePath "python.exe" -ArgumentList $serverScript -WorkingDirectory $workingDir -NoNewWindow -PassThru
+                  
+                  Start-Sleep -Seconds 5
+
+                  if ($server.HasExited) {
+                      Write-Host "Python server exited with code $($server.ExitCode)"
+                      $server = Start-Process -FilePath "python.exe" -ArgumentList $serverScript -WorkingDirectory $workingDir -NoNewWindow -PassThru
+                  }
+                  else {
+                      Write-Host "Python server is running with PID $($server.Id)"
+                      $server
+                  }
 
                   Write-Host "User data script execution completed successfully."
               }
@@ -135,6 +177,7 @@ resource "aws_launch_template" "pointcloud_api_server" {
               }
               </powershell>
               <persist>true</persist>
+              <detach>true</detach>
               EOF
   )
 }
