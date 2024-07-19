@@ -23,7 +23,7 @@ import time
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import threading
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 import urllib.request
 import shutil
 
@@ -66,39 +66,53 @@ def get_instance_credentials():
         return None
 
 # Create boto3 session using region information and temporary credentials
-def create_boto3_session():
-    credentials = get_instance_credentials()
+session = None
+last_refresh_time = 0
+CREDENTIAL_REFRESH_THRESHOLD = 3000
+
+def refresh_credentials_if_needed():
+    global session, last_refresh_time, s3, cloudwatch, cloudwatch_logs
+    current_time = time.time()
     
-    if region and credentials:
-        session = boto3.Session(
-            aws_access_key_id=credentials['AccessKeyId'],
-            aws_secret_access_key=credentials['SecretAccessKey'],
-            aws_session_token=credentials['Token'],
-            region_name=region
-        )
-        return session
-    else:
-        logger.error("Failed to create boto3 session")
-        return None
+    if current_time - last_refresh_time > CREDENTIAL_REFRESH_THRESHOLD:
+        region = get_instance_region()
+        credentials = get_instance_credentials()
+        
+        if region and credentials:
+            session = boto3.Session(
+                aws_access_key_id=credentials['AccessKeyId'],
+                aws_secret_access_key=credentials['SecretAccessKey'],
+                aws_session_token=credentials['Token'],
+                region_name=region
+            )
+            
+            s3 = session.client('s3')
+            cloudwatch = session.client('cloudwatch')
+            cloudwatch_logs = session.client('logs')
+            
+            last_refresh_time = current_time
+            logger.info("Refreshed AWS credentials")
+        else:
+            logger.error("Failed to refresh AWS credentials")
 
-# boto3 session
-session = create_boto3_session()
+def aws_api_call(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (NoCredentialsError, ClientError) as e:
+            if isinstance(e, ClientError) and e.response['Error']['Code'] != 'ExpiredToken':
+                raise
+            logger.warning(f"Credentials expired or missing, attempting to refresh: {str(e)}")
+            refresh_credentials_if_needed()
+            return func(*args, **kwargs)
+    return wrapper
 
-if session:
-    s3 = session.client("s3")
-    cloudwatch = session.client('cloudwatch')
-    cloudwatch_logs = session.client('logs')
-else:
-    logger.error("Failed to initialize AWS clients")
-    s3 = None
-    cloudwatch = None
-    cloudwatch_logs = None
-
+# Initialize session and clients
+refresh_credentials_if_needed()
 
 # Configuration for CloudWatch Client
 log_group_name = '/pointcloud-auto-test/api-logs'
 log_stream_name = f'api-log-stream-{instance_id}-{int(time.time())}'
-
 try:
     cloudwatch_logs.create_log_group(logGroupName=log_group_name)
 except cloudwatch_logs.exceptions.ResourceAlreadyExistsException:
@@ -109,6 +123,17 @@ try:
 except cloudwatch_logs.exceptions.ResourceAlreadyExistsException:
     pass
 
+@aws_api_call
+def put_log_events(log_group_name, log_stream_name, log_events, sequence_token=None):
+    kwargs = {
+        'logGroupName': log_group_name,
+        'logStreamName': log_stream_name,
+        'logEvents': log_events
+    }
+    if sequence_token:
+        kwargs['sequenceToken'] = sequence_token
+    return cloudwatch_logs.put_log_events(**kwargs)
+
 class CloudWatchLogsHandler(logging.Handler):
     def __init__(self, log_group_name, log_stream_name):
         super().__init__()
@@ -116,25 +141,18 @@ class CloudWatchLogsHandler(logging.Handler):
         self.log_stream_name = log_stream_name
         self.sequence_token = None
 
+    @aws_api_call
     def emit(self, record):
         log_entry = self.format(record)
         timestamp = int(record.created * 1000)  # CloudWatch expects timestamp in milliseconds
 
         try:
-            kwargs = {
-                'logGroupName': self.log_group_name,
-                'logStreamName': self.log_stream_name,
-                'logEvents': [
-                    {
-                        'timestamp': timestamp,
-                        'message': log_entry
-                    }
-                ]
-            }
-            if self.sequence_token:
-                kwargs['sequenceToken'] = self.sequence_token
-
-            response = cloudwatch_logs.put_log_events(**kwargs)
+            response = put_log_events(
+                self.log_group_name,
+                self.log_stream_name,
+                [{'timestamp': timestamp, 'message': log_entry}],
+                self.sequence_token
+            )
             self.sequence_token = response['nextSequenceToken']
         except ClientError as e:
             if e.response['Error']['Code'] == 'InvalidSequenceTokenException':
@@ -160,6 +178,7 @@ logger.addHandler(cloudwatch_handler)
 job_status = {}
 job_start_times = {}
 
+@aws_api_call
 def download_from_s3(s3_uri, local_path):
     if not s3:
         logger.error("S3 client is not initialized")
@@ -206,7 +225,7 @@ def download_from_s3(s3_uri, local_path):
     except Exception as e:
         logger.error(f"Unexpected error downloading from S3: {str(e)}")
 
-
+@aws_api_call
 def upload_to_s3(local_path, s3_uri):
     if not s3:
         logger.error("S3 client is not initialized")
@@ -287,7 +306,7 @@ def process_images(job_id, config):
         logger.info(f"Image processing completed in {duration:.2f} seconds for job {job_id}")
 
         if cloudwatch:
-            cloudwatch.put_metric_data(
+            put_log_events(
                 Namespace='CustomMetrics',
                 MetricData=[
                     {
@@ -304,7 +323,6 @@ def process_images(job_id, config):
                                 'Value': job_id
                             }
                         ]
-                        
                     },
                 ]
             )
