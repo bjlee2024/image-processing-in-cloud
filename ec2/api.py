@@ -32,8 +32,17 @@ import shutil
 logger = logging.getLogger("ImageProcessing")
 logger.setLevel(logging.INFO)
 
+# Check if running on EC2
+def is_running_on_ec2():
+    try:
+        urllib.request.urlopen("http://169.254.169.254/latest/meta-data/", timeout=1)
+        return True
+    except urllib.error.URLError:
+        return False
 # Get Region from EC2 instance's metadata
 def get_instance_region():
+    if not is_running_on_ec2():
+        return os.environ.get('AWS_DEFAULT_REGION', 'ap-northeast-2')
     try:
         with urllib.request.urlopen("http://169.254.169.254/latest/meta-data/placement/region", timeout=1) as response:
             return response.read().decode('utf-8')
@@ -42,6 +51,8 @@ def get_instance_region():
         return None
 
 def get_instance_id():
+    if not is_running_on_ec2():
+        return 'local-instance'
     try:
         with urllib.request.urlopen("http://169.254.169.254/latest/meta-data/instance-id", timeout=1) as response:
             return response.read().decode('utf-8')
@@ -54,6 +65,8 @@ instance_id = get_instance_id()
 
 # Get temporary credentials from EC2 instance metadata
 def get_instance_credentials():
+    if not is_running_on_ec2():
+        return None
     try:
         with urllib.request.urlopen("http://169.254.169.254/latest/meta-data/iam/security-credentials/", timeout=1) as response:
             role_name = response.read().decode('utf-8')
@@ -67,6 +80,9 @@ def get_instance_credentials():
 
 # Create boto3 session using region information and temporary credentials
 session = None
+s3 = None
+cloudwatch = None
+cloudwatch_logs = None
 last_refresh_time = 0
 CREDENTIAL_REFRESH_THRESHOLD = 3000
 
