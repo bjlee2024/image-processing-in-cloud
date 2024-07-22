@@ -103,21 +103,21 @@ resource "aws_s3_object" "api_py" {
 
 # Launch template
 resource "aws_launch_template" "pointcloud_api_server" {
-  name          = "pointcloud_api_server_template"
-  image_id      = var.custom_ami_id
-  instance_type = var.instance_type
-  key_name      = var.ec2_key_name
+  name                   = "pointcloud_api_server_template"
+  image_id               = var.custom_ami_id
+  instance_type          = var.instance_type
+  key_name               = var.ec2_key_name
   #vpc_security_group_ids = [aws_security_group.pointcloud_ec2_sg.id]
-  depends_on = [aws_s3_object.api_py, aws_iam_instance_profile.pointcloud_ec2_profile]
+  depends_on             = [aws_s3_object.api_py, aws_iam_instance_profile.pointcloud_ec2_profile]
 
   iam_instance_profile {
     name = aws_iam_instance_profile.pointcloud_ec2_profile.name
   }
-
+  
   # public IP for local testing purposes using RDP
   network_interfaces {
     associate_public_ip_address = true
-    security_groups             = [aws_security_group.pointcloud_ec2_sg.id]
+    security_groups = [aws_security_group.pointcloud_ec2_sg.id]
   }
 
   # block_device_mappings {
